@@ -46,7 +46,11 @@ class ColumnType {
 
   /// Define a default value using a raw SQL expression.
   ColumnType defaultVal(dynamic value) {
-    modifiers.add("DEFAULT $value");
+    if (value is String) {
+      modifiers.add("DEFAULT '$value'");
+    } else {
+      modifiers.add("DEFAULT $value");
+    }
     return this;
   }
 
