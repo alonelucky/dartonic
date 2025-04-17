@@ -352,7 +352,7 @@ class QueryBuilder {
     return sql;
   }
 
-  void reset() {
+  QueryBuilder reset() {
     _table = '';
     _columns = ['*'];
     _whereClauses.clear();
@@ -370,5 +370,6 @@ class QueryBuilder {
     _returningClause = null;
     _groupByClauses.clear();
     _havingClauses.clear();
+    return this;
   }
 }
