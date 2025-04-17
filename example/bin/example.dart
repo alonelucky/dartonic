@@ -1,10 +1,6 @@
-import 'package:darto/darto.dart';
-
 import 'package:dartonic/dartonic.dart';
 
-void main() async {
-  final app = Darto();
-
+void main() {
   final usersTable = sqliteTable('users', {
     'id': integer().primaryKey(autoIncrement: true),
     'name': text().notNull(),
@@ -40,51 +36,48 @@ void main() async {
     ],
   );
 
-  final dartonic = Dartonic("sqlite::memory:", [
+  final db = QueryBuilder([
     usersTable,
     rolesTable,
     userRolesTable,
   ]);
-  final db = await dartonic.sync();
 
   // Inserir mais dados de teste
-  final user =
-      await db.insert('users').values({
-        'name': 'Jane Doe',
-        'email': 'janedoe@mail.com',
-      }).returning();
-  await db.insert('users').values({
+  final user = db.insert('users').values({
+    'name': 'Jane Doe',
+    'email': 'janedoe@mail.com',
+  }).returning();
+
+  db.insert('users').values({
     'name': 'John Doe',
     'email': 'johndoe@mail.com',
   });
   print('Insert with returning: $user');
+  // Insert with returning: INSERT INTO "users" ("name", "email") VALUES (?, ?) RETURNING *
 
-  await db.insert('roles').values({'name': 'user'});
-  await db.insert('roles').values({'name': 'admin'});
+  db.insert('roles').values({'name': 'user'});
+  db.insert('roles').values({'name': 'admin'});
 
   // Criar mais relacionamentos
-  await db.insert('user_roles').values({
+  db.insert('user_roles').values({
     'user_id': 2, // John Doe
     'role_id': 2, // role user
   });
 
-  await db.insert('user_roles').values({
+  db.insert('user_roles').values({
     'user_id': 2, // Jane Doe
     'role_id': 1, // role admin
   });
 
   // Primeiro vamos garantir que o count está funcionando corretamente
   // Primeiro, confirmamos que temos 2 roles no sistema
-  final userNameLikeJohn = await db
-      .select()
-      .from('users')
-      .where(like('users.name', '%john%'));
-  // print('Total de Roles: $totalRoles');
-  // final user = await db.select().from('users');
+  final userNameLikeJohn =
+      db.select().from('users').where(like('users.name', '%john%'));
   print('Select with where like: $userNameLikeJohn');
+  // Select with where like: SELECT * FROM "users" WHERE users.name LIKE ?
 
   // Query para buscar usuários e suas roles
-  final usersWithRoles = await db
+  final usersWithRoles = db
       .select({
         'name': 'users.name',
         'total_roles': count(
@@ -96,31 +89,19 @@ void main() async {
       .innerJoin('user_roles', eq('users.id', 'user_roles.user_id'))
       .groupBy(['users.id', 'users.name']);
   print('Usuários e suas roles: $usersWithRoles');
+  // Usuários e suas roles: SELECT "users"."name" AS "name", COUNT(DISTINCT user_roles.role_id) AS "total_roles" FROM "users" INNER JOIN "user_roles" ON "users"."id" = "user_roles"."user_id" WHERE users.name LIKE ? GROUP BY "users"."id", "users"."name"
 
-  // // Query para buscar apenas usuários que têm TODAS as roles
-  // final usersWithAllRoles = await db
-  //     .select({
-  //       'name': 'users.name',
-  //       'total_roles': 'COUNT(DISTINCT user_roles.role_id)',
-  //     })
-  //     .from('users')
-  //     .innerJoin('user_roles', eq('users.id', 'user_roles.user_id'))
-  //     .groupBy(['users.id', 'users.name'])
-  //     .having(eq('COUNT(DISTINCT user_roles.role_id)', totalRoles[0]['total']));
-  // print('Usuários com todas as roles: $usersWithAllRoles');
-
-  final userUpdate =
-      await db
-          .update('users')
-          .set({'name': 'John Doe Updated'})
-          .where(eq('id', 1))
-          .returning();
+  final userUpdate = db
+      .update('users')
+      .set({'name': 'John Doe Updated'})
+      .where(eq('id', 1))
+      .returning();
   print(userUpdate);
+  // UPDATE "users" SET "name" = ? WHERE users.name LIKE ? AND "id" = 1 RETURNING *
 
-  final usersCount = await db.select().from('users').count();
-  print('Total de usuários: $usersCount');
+  final usersCount = db.select().from('users').count();
+  print('Total de usuários: ${usersCount.toString()}');
+  // Total de usuários: SELECT COUNT(*) FROM "users" INNER JOIN "user_roles" ON "users"."id" = "user_roles"."user_id" WHERE users.name LIKE ? AND "id" = 1 GROUP BY "users"."id", "users"."name"
 
-  // await db.delete('users').where(eq('users.id', 1));
-
-  app.listen(3000, () => print('Server is running on port 3000'));
+  //  db.delete('users').where(eq('users.id', 1));
 }

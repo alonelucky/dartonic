@@ -1,3 +1,14 @@
+
+<h3>Base Dartonic Only Sql builder</h3>
+
+```yaml
+dependencies:
+  dartonic:
+    git:
+      url: https://github.com/alonelucky/dartonic.git
+      # ref: some-branch
+```
+
 <p align="center">
   <img src="./assets/logo.png" width="200px" align="center" alt="Dartonic logo" />
   <h1 align="center">Dartonic</h1>

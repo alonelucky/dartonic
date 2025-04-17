@@ -1,13 +1,13 @@
-import 'dart:async';
-
-import '../drivers/driver.dart';
 import '../types/table.dart';
 import '../utils/convertion_helper.dart';
 
 import 'condition.dart';
 
-class QueryBuilder implements Future<dynamic> {
-  final DatabaseDriver _driver;
+class Dartonic extends QueryBuilder {
+  Dartonic([List<TableSchema>? schemas]) : super(schemas ?? []);
+}
+
+class QueryBuilder {
   String _table = '';
   List<String> _columns = ['*'];
   final List<String> _whereClauses = [];
@@ -22,13 +22,15 @@ class QueryBuilder implements Future<dynamic> {
   final List<dynamic> _parameters = [];
   String? _createTableSQL;
   final List<String> _alterTableCommands = [];
-  final Map<String, TableSchema> _schemas;
+  late final Map<String, TableSchema> _schemas;
   final List<String> _groupByClauses = [];
   final List<String> _havingClauses = [];
 
   String? _returningClause;
 
-  QueryBuilder(this._driver, this._schemas);
+  QueryBuilder(List<TableSchema> schemas) {
+    _schemas = {for (var schema in schemas) schema.name: schema};
+  }
 
   String _escapeIdentifier(String identifier) {
     if (identifier.toLowerCase().contains('count')) {
@@ -45,11 +47,12 @@ class QueryBuilder implements Future<dynamic> {
     _queryType = 'SELECT';
     if (columns == null) {
       _columns = ['*'];
-    } else
+    } else {
       _columns = columns.entries
           .map((e) =>
               "${_escapeIdentifier(e.value)} AS ${_escapeIdentifier(e.key)}")
           .toList();
+    }
 
     return this;
   }
@@ -251,15 +254,25 @@ class QueryBuilder implements Future<dynamic> {
 
   /// Retorna a string SQL sem executar.
   String toSql() {
+    var s = toString();
+    if (s.isEmpty) {
+      throw Exception('Nenhuma operação definida!');
+    }
+    return s;
+  }
+
+  @override
+  String toString() {
     if (_queryType == 'SELECT') return _buildSelect();
     if (_queryType == 'INSERT') return _buildInsert();
     if (_queryType == 'UPDATE') return _buildUpdate();
     if (_queryType == 'DELETE') return _buildDelete();
-    if (_queryType == 'CREATE_TABLE') return "${_createTableSQL!};";
-    if (_queryType == 'DROP_TABLE') return "DROP TABLE IF EXISTS $_table;";
-    if (_alterTableCommands.isNotEmpty)
-      return "ALTER TABLE $_table ${_alterTableCommands.join(", ")};";
-    throw Exception('Nenhuma operação definida!');
+    if (_queryType == 'CREATE_TABLE') return _createTableSQL!;
+    if (_queryType == 'DROP_TABLE') return "DROP TABLE IF EXISTS $_table";
+    if (_alterTableCommands.isNotEmpty) {
+      return "ALTER TABLE $_table ${_alterTableCommands.join(", ")}";
+    }
+    return "";
   }
 
   List<dynamic> getParameters() => _parameters;
@@ -299,7 +312,7 @@ class QueryBuilder implements Future<dynamic> {
       sql += " UNION ${_unionQueries.join(" UNION ")}";
     }
 
-    return "$sql;";
+    return sql;
   }
 
   String _buildInsert() {
@@ -317,64 +330,29 @@ class QueryBuilder implements Future<dynamic> {
         .map((key) => "${_escapeIdentifier(key)} = ?")
         .join(", ");
     String sql = "UPDATE $_table SET $setClause";
-    if (_whereClauses.isNotEmpty)
+    if (_whereClauses.isNotEmpty) {
       sql += " WHERE ${_whereClauses.join(" AND ")}";
+    }
+
     if (_returningClause != null) {
       sql += " $_returningClause";
     }
-    return "$sql;";
+    return sql;
   }
 
   String _buildDelete() {
     String sql = "DELETE FROM $_table";
-    if (_whereClauses.isNotEmpty)
+    if (_whereClauses.isNotEmpty) {
       sql += " WHERE ${_whereClauses.join(" AND ")}";
+    }
+
     if (_returningClause != null) {
       sql += " $_returningClause";
     }
-    return "$sql;";
+    return sql;
   }
 
-  Future<dynamic> _internalExecute() async {
-    final sql = toSql();
-    final params = getParameters();
-    dynamic result;
-    if (_queryType == 'SELECT' || _returningClause != null) {
-      result = await _driver.execute(sql, params);
-      // Se for uma contagem, retorne apenas o valor numérico
-      if (_queryType == 'SELECT' &&
-          _columns.length == 1 &&
-          _columns[0].toLowerCase().startsWith("count(") &&
-          result is List &&
-          result.isNotEmpty &&
-          result[0] is Map) {
-        final row = result[0] as Map;
-        if (row.length == 1) {
-          result = row.values.first;
-        }
-      } else if (result is List) {
-        result = result.map((row) {
-          if (row is Map<String, dynamic>) {
-            row.forEach((key, value) {
-              final colType = _schemas[_table]?.columns[key];
-              if (colType != null) {
-                row[key] = convertValueForSelect(value, colType);
-              }
-            });
-          }
-          return row;
-        }).toList();
-      }
-    } else {
-      await _driver.raw(sql, params);
-      result = null;
-    }
-    _reset();
-
-    return result;
-  }
-
-  void _reset() {
+  void reset() {
     _table = '';
     _columns = ['*'];
     _whereClauses.clear();
@@ -392,31 +370,5 @@ class QueryBuilder implements Future<dynamic> {
     _returningClause = null;
     _groupByClauses.clear();
     _havingClauses.clear();
-  }
-
-  @override
-  Future<S> then<S>(FutureOr<S> Function(dynamic value) onValue,
-      {Function? onError}) {
-    return _internalExecute().then<S>(onValue, onError: onError);
-  }
-
-  @override
-  Future<dynamic> catchError(Function onError,
-      {bool Function(Object error)? test}) {
-    return _internalExecute().catchError(onError, test: test);
-  }
-
-  @override
-  Future<dynamic> whenComplete(FutureOr<void> Function() action) {
-    return _internalExecute().whenComplete(action);
-  }
-
-  @override
-  Stream<dynamic> asStream() => Stream.fromFuture(_internalExecute());
-
-  @override
-  Future<dynamic> timeout(Duration timeLimit,
-      {FutureOr<dynamic> Function()? onTimeout}) {
-    return _internalExecute().timeout(timeLimit, onTimeout: onTimeout);
   }
 }
